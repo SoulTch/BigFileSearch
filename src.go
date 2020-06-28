@@ -34,6 +34,8 @@ func newRecord(size filesize, path string, par *record, isDir bool) record {
 	} else {
 		ret.child = nil
 	}
+
+	return ret
 }
 
 
