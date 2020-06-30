@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"container/heap"
 	"sort"
+	"path"
 )
 
 // Filesize
@@ -18,30 +19,38 @@ func (h filesize) String() string {
 	size := float64(h)
 	for i := 0; i < len(names); i++ {
 		if size < 1000 {
-			return fmt.Sprintf("%3lf %s", size, names[i])
+			numbs := 0
+			switch {
+			case i == 0: numbs = 0
+			case size < 10: numbs = 2
+			case size < 100: numbs = 1
+			case size < 1000: numbs = 0
+			}
+
+			return fmt.Sprintf("%.*f %s", numbs, size, names[i])
 		}
 		
 		size /= 1024
 	}
 
-	return fmt.Sprintf("%6lf GiB", size*1024)
+	return fmt.Sprintf("%.0f GiB", size*1024)
 }
 
 // Record
 type record struct {
 	size filesize
-	path string
+	cpath string
 	par *record
-	child []record
+	child []*record
 }
 
-func newRecord(size filesize, path string, par *record, isDir bool) record {
-	ret := record{}
+func newRecord(size filesize, cpath string, par *record, isDir bool) *record {
+	ret := new(record)
 	ret.size = size
-	ret.path = path
+	ret.cpath = cpath
 	ret.par = par
 	if isDir {
-		ret.child = make([]record, 0)
+		ret.child = make([]*record, 0)
 	} else {
 		ret.child = nil
 	}
@@ -69,26 +78,26 @@ func (h *priority_queue) Pop() interface{} {
 	return x
 }
 
-func traverse(path string, par *record) (record, error) {
-	stat, err := os.Stat(path)
+func traverse(cpath string, par *record) (*record, error) {
+	stat, err := os.Stat(cpath)
 	if err != nil {
-		return record{}, err
+		return nil, err
 	}
 
 	mode := stat.Mode()
 	if !mode.IsDir() {
-		return newRecord(filesize(stat.Size()), path, par, false), nil
+		return newRecord(filesize(stat.Size()), cpath, par, false), nil
 	}
 
-	files, err := ioutil.ReadDir(path)
+	files, err := ioutil.ReadDir(cpath)
 	if err != nil {
-		return record{}, err
+		return nil, err
 	}
 
-	cur_file := newRecord(filesize(stat.Size()), path, par, true)
+	cur_file := newRecord(filesize(stat.Size()), cpath, par, true)
 
 	for _, file := range files {
-		chi_file, err := traverse(file.Name(), &cur_file)
+		chi_file, err := traverse(path.Join(cpath, file.Name()), cur_file)
 
 		if err != nil {
 			continue
@@ -101,16 +110,14 @@ func traverse(path string, par *record) (record, error) {
 	return cur_file, nil
 }
 
-var list_size *int64
+var list_size *int
 var target_path string
 
 var result = make(map[*record]bool)
 var pq = &priority_queue{}
 
 func main() {
-	fmt.Println(filesize(182))
-	return;
-	list_size = flag.Int64("size", 20, "Number of maximum items to find out")
+	list_size = flag.Int("size", 20, "Number of maximum items to find out")
 
 	flag.Parse()
 	if target_path = "."; len(flag.Args()) > 0 {
@@ -123,17 +130,21 @@ func main() {
 		return
 	}
 
+	heap.Init(pq)
 	heap.Push(pq, root)
 
-	for int64(len(result)) < *list_size && len(*pq) > 0 {
+	for len(result) < *list_size && pq.Len() > 0 {
 		item := heap.Pop(pq).(*record)
+
 		if _, ok := result[item.par]; ok {
 			delete(result, item.par)
 		}
 		
 		result[item] = true
-		for _, file := range item.child {
-			heap.Push(pq, file)
+		if item.child != nil {
+			for _, file := range item.child {
+				heap.Push(pq, file)
+			}
 		}
 	}
 
@@ -147,6 +158,6 @@ func main() {
 	})
 
 	for _, val := range fin {
-		fmt.Println(val.size, val.path)
+		fmt.Printf("%-70s %10s\n", val.cpath, val.size)
 	}
 }
