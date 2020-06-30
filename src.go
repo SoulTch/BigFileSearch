@@ -3,17 +3,28 @@ package main
 import (
 	"fmt"	
 	"os"
+	"flag"
 	"io/ioutil"
 	"container/heap"
 	"sort"
 )
 
-
 // Filesize
 type filesize int64
 
-func (h *filesize) String() string {
-	return "1234"
+func (h filesize) String() string {
+	names := []string{"B", "KiB", "MiB", "GiB"}
+	
+	size := float64(h)
+	for i := 0; i < len(names); i++ {
+		if size < 1000 {
+			return fmt.Sprintf("%3lf %s", size, names[i])
+		}
+		
+		size /= 1024
+	}
+
+	return fmt.Sprintf("%6lf GiB", size*1024)
 }
 
 // Record
@@ -74,7 +85,7 @@ func traverse(path string, par *record) (record, error) {
 		return record{}, err
 	}
 
-	cur_file := newRecord(0, path, par, true)
+	cur_file := newRecord(filesize(stat.Size()), path, par, true)
 
 	for _, file := range files {
 		chi_file, err := traverse(file.Name(), &cur_file)
@@ -90,12 +101,23 @@ func traverse(path string, par *record) (record, error) {
 	return cur_file, nil
 }
 
-var list_size = 0
+var list_size *int64
+var target_path string
+
 var result = make(map[*record]bool)
 var pq = &priority_queue{}
 
 func main() {
-	root, err := traverse("/Users/soultch/Project", nil)
+	fmt.Println(filesize(182))
+	return;
+	list_size = flag.Int64("size", 20, "Number of maximum items to find out")
+
+	flag.Parse()
+	if target_path = "."; len(flag.Args()) > 0 {
+		target_path = flag.Args()[0]
+	}
+
+	root, err := traverse(target_path, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -103,10 +125,9 @@ func main() {
 
 	heap.Push(pq, root)
 
-	for len(result) < list_size {
+	for int64(len(result)) < *list_size && len(*pq) > 0 {
 		item := heap.Pop(pq).(*record)
 		if _, ok := result[item.par]; ok {
-			list_size -= 1
 			delete(result, item.par)
 		}
 		
@@ -116,7 +137,7 @@ func main() {
 		}
 	}
 
-	fin := make([]*record, 0)
+	fin := make([]*record, 0, len(result))
 	for key, _ := range result {
 		fin = append(fin, key)
 	}
